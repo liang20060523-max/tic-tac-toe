@@ -103,6 +103,9 @@
         <input id="room-input" type="text" maxlength="6" placeholder="Room code">
         <button id="join-room">Join room</button>
       </div>
+      <div class="row">
+        <button id="leave-room">Leave room</button>
+      </div>
       <p id="room-code" class="hint">Room: none</p>
       <p class="hint">Reason: two-device play needs one shared source of truth. This page renders the board, but the room data is the real game state.</p>
     </section>
@@ -161,17 +164,31 @@
     const roomInput = document.getElementById("room-input");
     const createRoomButton = document.getElementById("create-room");
     const joinRoomButton = document.getElementById("join-room");
+    const leaveRoomButton = document.getElementById("leave-room");
     const resetButton = document.getElementById("reset");
     const cells = Array.from(document.querySelectorAll(".cell"));
 
     const missingConfig = Object.values(firebaseConfig).some((value) => value === "REPLACE_ME");
-    const playerId = crypto.randomUUID();
+    const playerId = getPlayerId();
 
     let database = null;
     let unsubscribeRoom = null;
     let currentRoomCode = "";
     let currentSymbol = "";
     let currentState = null;
+
+    function getPlayerId() {
+      const key = "tic-tac-toe-player-id";
+      const existing = localStorage.getItem(key);
+
+      if (existing) {
+        return existing;
+      }
+
+      const next = crypto.randomUUID();
+      localStorage.setItem(key, next);
+      return next;
+    }
 
     function createEmptyState() {
       return {
@@ -264,7 +281,23 @@
       });
     }
 
+    function detachRoom() {
+      if (unsubscribeRoom) {
+        unsubscribeRoom();
+        unsubscribeRoom = null;
+      }
+
+      currentRoomCode = "";
+      currentSymbol = "";
+      currentState = null;
+      renderRoom(null);
+    }
+
     async function createRoom() {
+      if (currentRoomCode) {
+        await leaveRoom();
+      }
+
       const roomCode = randomRoomCode();
       const nextState = createEmptyState();
       nextState.players.X = playerId;
@@ -279,6 +312,10 @@
       if (!roomCode) {
         updateStatus("Enter a room code first.");
         return;
+      }
+
+      if (currentRoomCode && currentRoomCode !== roomCode) {
+        await leaveRoom();
       }
 
       const result = await runTransaction(roomRef(roomCode), (state) => {
@@ -301,13 +338,19 @@
         return state;
       });
 
-      if (!result.committed || !result.snapshot.exists()) {
+      if (!result.snapshot.exists()) {
         updateStatus("Room not found.");
         return;
       }
 
       const state = result.snapshot.val();
       currentSymbol = state.players.X === playerId ? "X" : state.players.O === playerId ? "O" : "";
+
+      if (!currentSymbol) {
+        updateStatus("Room is full. Create a new room or wait for someone to leave.");
+        return;
+      }
+
       attachRoom(roomCode);
     }
 
@@ -367,10 +410,36 @@
       });
     }
 
+    async function leaveRoom() {
+      if (!currentRoomCode || !currentSymbol) {
+        detachRoom();
+        return;
+      }
+
+      const roomCode = currentRoomCode;
+      const symbol = currentSymbol;
+
+      await runTransaction(roomRef(roomCode), (state) => {
+        if (!state || state.players[symbol] !== playerId) {
+          return state;
+        }
+
+        state.players[symbol] = "";
+        state.board = Array(9).fill("");
+        state.currentPlayer = "X";
+        state.winner = "";
+        state.status = state.players.X && state.players.O ? "playing" : "waiting";
+        return state;
+      });
+
+      detachRoom();
+    }
+
     if (missingConfig) {
       updateStatus("Add your Firebase config in this file before online play will work.");
       createRoomButton.disabled = true;
       joinRoomButton.disabled = true;
+      leaveRoomButton.disabled = true;
       resetButton.disabled = true;
       cells.forEach((cell) => {
         cell.disabled = true;
@@ -382,11 +451,20 @@
 
     createRoomButton.addEventListener("click", createRoom);
     joinRoomButton.addEventListener("click", joinRoom);
+    leaveRoomButton.addEventListener("click", leaveRoom);
     resetButton.addEventListener("click", restartRoom);
     cells.forEach((cell) => {
       cell.addEventListener("click", () => {
         playMove(Number(cell.dataset.index));
       });
+    });
+    window.addEventListener("beforeunload", () => {
+      if (currentRoomCode && currentSymbol) {
+        navigator.sendBeacon?.(
+          `${firebaseConfig.databaseURL}/rooms/${currentRoomCode}/players/${currentSymbol}.json`,
+          JSON.stringify("")
+        );
+      }
     });
   </script>
 </body>
