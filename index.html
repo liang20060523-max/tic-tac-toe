@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tic-Tac-Toe</title>
+  <style>
+    :root {
+      font-family: system-ui, sans-serif;
+      color: #111;
+      background: #f4f4f4;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+    }
+
+    main {
+      display: grid;
+      gap: 16px;
+      justify-items: center;
+      padding: 24px;
+    }
+
+    h1,
+    p {
+      margin: 0;
+    }
+
+    .board {
+      display: grid;
+      grid-template-columns: repeat(3, 88px);
+      gap: 8px;
+    }
+
+    button {
+      font: inherit;
+    }
+
+    .cell {
+      width: 88px;
+      height: 88px;
+      border: 2px solid #111;
+      background: #fff;
+      font-size: 2rem;
+      cursor: pointer;
+    }
+
+    .cell:disabled {
+      color: #111;
+      cursor: default;
+    }
+
+    .reset {
+      padding: 10px 16px;
+      border: 2px solid #111;
+      background: #fff;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Tic-Tac-Toe</h1>
+    <p id="status">Player X's turn</p>
+    <section class="board" aria-label="Tic-Tac-Toe board">
+      <button class="cell" data-index="0" aria-label="Cell 1"></button>
+      <button class="cell" data-index="1" aria-label="Cell 2"></button>
+      <button class="cell" data-index="2" aria-label="Cell 3"></button>
+      <button class="cell" data-index="3" aria-label="Cell 4"></button>
+      <button class="cell" data-index="4" aria-label="Cell 5"></button>
+      <button class="cell" data-index="5" aria-label="Cell 6"></button>
+      <button class="cell" data-index="6" aria-label="Cell 7"></button>
+      <button class="cell" data-index="7" aria-label="Cell 8"></button>
+      <button class="cell" data-index="8" aria-label="Cell 9"></button>
+    </section>
+    <button class="reset" id="reset">Restart</button>
+  </main>
+  <script>
+    const cells = Array.from(document.querySelectorAll(".cell"));
+    const status = document.getElementById("status");
+    const reset = document.getElementById("reset");
+    const wins = [
+      [0, 1, 2],
+      [3, 4, 5],
+      [6, 7, 8],
+      [0, 3, 6],
+      [1, 4, 7],
+      [2, 5, 8],
+      [0, 4, 8],
+      [2, 4, 6]
+    ];
+
+    let board = Array(9).fill("");
+    let player = "X";
+    let finished = false;
+
+    function updateStatus(message) {
+      status.textContent = message;
+    }
+
+    function checkWinner() {
+      return wins.find(([a, b, c]) => {
+        return board[a] && board[a] === board[b] && board[a] === board[c];
+      });
+    }
+
+    function handleMove(event) {
+      const index = Number(event.currentTarget.dataset.index);
+
+      if (board[index] || finished) {
+        return;
+      }
+
+      board[index] = player;
+      event.currentTarget.textContent = player;
+      event.currentTarget.disabled = true;
+
+      if (checkWinner()) {
+        finished = true;
+        updateStatus(`Player ${player} wins`);
+        return;
+      }
+
+      if (board.every(Boolean)) {
+        finished = true;
+        updateStatus("Draw");
+        return;
+      }
+
+      player = player === "X" ? "O" : "X";
+      updateStatus(`Player ${player}'s turn`);
+    }
+
+    function resetGame() {
+      board = Array(9).fill("");
+      player = "X";
+      finished = false;
+      updateStatus("Player X's turn");
+      cells.forEach((cell) => {
+        cell.textContent = "";
+        cell.disabled = false;
+      });
+    }
+
+    cells.forEach((cell) => cell.addEventListener("click", handleMove));
+    reset.addEventListener("click", resetGame);
+  </script>
+</body>
+</html>
