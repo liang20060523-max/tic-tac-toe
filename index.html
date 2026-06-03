@@ -130,6 +130,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
     import {
+      get,
       getDatabase,
       onValue,
       ref,
@@ -201,6 +202,25 @@
         winner: "",
         status: "waiting"
       };
+    }
+
+    function normalizePlayerSlot(value) {
+      return typeof value === "string" ? value : "";
+    }
+
+    function normalizeState(state) {
+      if (!state) {
+        return null;
+      }
+
+      state.board = Array.isArray(state.board) ? state.board : Array(9).fill("");
+      state.players = state.players || { X: "", O: "" };
+      state.players.X = normalizePlayerSlot(state.players.X);
+      state.players.O = normalizePlayerSlot(state.players.O);
+      state.currentPlayer = state.currentPlayer === "O" ? "O" : "X";
+      state.winner = typeof state.winner === "string" ? state.winner : "";
+      state.status = typeof state.status === "string" ? state.status : "waiting";
+      return state;
     }
 
     function updateStatus(message) {
@@ -277,7 +297,7 @@
 
       currentRoomCode = roomCode;
       unsubscribeRoom = onValue(roomRef(roomCode), (snapshot) => {
-        renderRoom(snapshot.val());
+        renderRoom(normalizeState(snapshot.val()));
       });
     }
 
@@ -318,7 +338,23 @@
         await leaveRoom();
       }
 
+      let snapshot;
+
+      try {
+        snapshot = await get(roomRef(roomCode));
+      } catch (error) {
+        updateStatus("Could not reach the room. Check your network or database rules.");
+        return;
+      }
+
+      if (!snapshot.exists()) {
+        updateStatus("Room not found.");
+        return;
+      }
+
       const result = await runTransaction(roomRef(roomCode), (state) => {
+        state = normalizeState(state || snapshot.val());
+
         if (!state) {
           return;
         }
@@ -338,12 +374,12 @@
         return state;
       });
 
-      if (!result.snapshot.exists()) {
-        updateStatus("Room not found.");
+      if (!result.committed || !result.snapshot.exists()) {
+        updateStatus("Could not join the room. Try again.");
         return;
       }
 
-      const state = result.snapshot.val();
+      const state = normalizeState(result.snapshot.val());
       currentSymbol = state.players.X === playerId ? "X" : state.players.O === playerId ? "O" : "";
 
       if (!currentSymbol) {
@@ -361,6 +397,8 @@
       }
 
       await runTransaction(roomRef(currentRoomCode), (state) => {
+        state = normalizeState(state);
+
         if (!state) {
           return;
         }
@@ -398,6 +436,8 @@
       }
 
       await runTransaction(roomRef(currentRoomCode), (state) => {
+        state = normalizeState(state);
+
         if (!state) {
           return;
         }
@@ -457,14 +497,6 @@
       cell.addEventListener("click", () => {
         playMove(Number(cell.dataset.index));
       });
-    });
-    window.addEventListener("beforeunload", () => {
-      if (currentRoomCode && currentSymbol) {
-        navigator.sendBeacon?.(
-          `${firebaseConfig.databaseURL}/rooms/${currentRoomCode}/players/${currentSymbol}.json`,
-          JSON.stringify("")
-        );
-      }
     });
   </script>
 </body>
